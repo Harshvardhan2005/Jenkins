@@ -1,0 +1,508 @@
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.*;
+
+/**
+ * Smart Traffic Management System (Dijkstra’s Algorithm)
+ * --------------------------------------------------------
+ * 🚑 Finds the quickest route for an ambulance to the nearest hospital.
+ * ✅ Supports dynamic traffic updates (edge weight changes).
+ * ✅ Handles large city networks (thousands of nodes & edges).
+ * ✅ Exports a DOT file for path visualization (Graphviz).
+ */
+public class SmartTraffic_DijkstraDynamic {
+
+    // -------------------- GRAPH STRUCTURE --------------------
+    static class Edge {
+        int to;
+        double weight; // travel time in minutes
+        Edge(int to, double weight) {
+            this.to = to;
+            this.weight = weight;
+        }
+    }
+
+    static class Graph {
+        int n; // number of intersections
+        List<List<Edge>> adj;
+
+        Graph(int n) {
+            this.n = n;
+            adj = new ArrayList<>();
+            for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
+        }
+
+        void addEdge(int u, int v, double w) {
+            adj.get(u).add(new Edge(v, w)); // directed edge u -> v
+        }
+
+        boolean updateEdgeWeight(int u, int v, double newWeight) {
+            for (Edge e : adj.get(u)) {
+                if (e.to == v) {
+                    e.weight = newWeight;
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    // -------------------- NODE CLASS FOR PRIORITY QUEUE --------------------
+    static class Node {
+        int id;
+        double distance;
+        Node(int id, double distance) {
+            this.id = id;
+            this.distance = distance;
+        }
+    }
+
+    // -------------------- DIJKSTRA RESULT --------------------
+    static class DijkstraResult {
+        double[] dist;
+        int[] parent;
+
+        DijkstraResult(int n) {
+            dist = new double[n];
+            parent = new int[n];
+            Arrays.fill(dist, Double.POSITIVE_INFINITY);
+            Arrays.fill(parent, -1);
+        }
+    }
+
+    // -------------------- DIJKSTRA ALGORITHM --------------------
+    public static DijkstraResult dijkstra(Graph g, int source) {
+        int n = g.n;
+        DijkstraResult res = new DijkstraResult(n);
+        res.dist[source] = 0.0;
+
+        // ✅ FIX: Use Node class inside the comparator (no lambda capturing mutable vars)
+        PriorityQueue<Node> pq = new PriorityQueue<>(Comparator.comparingDouble(n1 -> n1.distance));
+        pq.offer(new Node(source, 0.0));
+
+        boolean[] visited = new boolean[n];
+
+        while (!pq.isEmpty()) {
+            Node current = pq.poll();
+            int u = current.id;
+
+            if (visited[u]) continue;
+            visited[u] = true;
+
+            for (Edge e : g.adj.get(u)) {
+                int v = e.to;
+                double newDist = res.dist[u] + e.weight;
+
+                if (newDist < res.dist[v]) {
+                    res.dist[v] = newDist;
+                    res.parent[v] = u;
+                    pq.offer(new Node(v, newDist));
+                }
+            }
+        }
+        return res;
+    }
+
+    // -------------------- PATH RECONSTRUCTION --------------------
+    public static List<Integer> reconstructPath(DijkstraResult res, int target) {
+        List<Integer> path = new ArrayList<>();
+        if (res.dist[target] == Double.POSITIVE_INFINITY) return path;
+        int cur = target;
+        while (cur != -1) {
+            path.add(cur);
+            cur = res.parent[cur];
+        }
+        Collections.reverse(path);
+        return path;
+    }
+
+    // -------------------- EXPORT GRAPH TO DOT FILE --------------------
+    public static void exportGraphvizDot(Graph g, List<Integer> pathNodes, String filename) throws IOException {
+        Set<String> pathEdges = new HashSet<>();
+        for (int i = 0; i + 1 < pathNodes.size(); i++) {
+            pathEdges.add(pathNodes.get(i) + "->" + pathNodes.get(i + 1));
+        }
+
+        try (FileWriter fw = new FileWriter(filename)) {
+            fw.write("digraph G {\n  rankdir=LR;\n  node [shape=circle, fontsize=10];\n");
+
+            for (int u = 0; u < g.n; u++) {
+                String fill = pathNodes.contains(u) ? "style=filled, fillcolor=yellow" : "";
+                fw.write(String.format("  %d [%s];\n", u, fill));
+            }
+
+            for (int u = 0; u < g.n; u++) {
+                for (Edge e : g.adj.get(u)) {
+                    String key = u + "->" + e.to;
+                    String attrs = String.format("label=\"%.2f\"", e.weight);
+                    if (pathEdges.contains(key)) attrs += ", color=red, penwidth=2.5";
+                    fw.write(String.format("  %d -> %d [%s];\n", u, e.to, attrs));
+                }
+            }
+            fw.write("}\n");
+        }
+    }
+
+    // -------------------- MAIN FUNCTION --------------------
+    public static void main(String[] args) throws Exception {
+        Scanner sc = new Scanner(System.in);
+
+        System.out.println("🚦 Smart Traffic Management System — Dijkstra’s Algorithm");
+        System.out.print("Enter number of intersections (nodes): ");
+        int n = sc.nextInt();
+        System.out.print("Enter number of roads (edges): ");
+        int m = sc.nextInt();
+
+        Graph g = new Graph(n);
+
+        System.out.println("\nEnter road details: <from> <to> <travel_time_in_minutes>");
+        for (int i = 0; i < m; i++) {
+            int u = sc.nextInt();
+            int v = sc.nextInt();
+            double w = sc.nextDouble();
+            g.addEdge(u, v, w);
+            g.addEdge(v, u, w); // Assuming bidirectional roads
+        }
+
+        System.out.print("\nEnter ambulance source node (S): ");
+        int source = sc.nextInt();
+
+        System.out.print("Enter number of hospital nodes: ");
+        int h = sc.nextInt();
+        Set<Integer> hospitals = new HashSet<>();
+        System.out.println("Enter hospital node IDs:");
+        for (int i = 0; i < h; i++) hospitals.add(sc.nextInt());
+
+        // -------------------- INITIAL RUN --------------------
+        System.out.println("\nRunning Dijkstra...");
+        long start = System.currentTimeMillis();
+        DijkstraResult res = dijkstra(g, source);
+        long end = System.currentTimeMillis();
+
+        int nearestHospital = -1;
+        double shortestTime = Double.POSITIVE_INFINITY;
+
+        for (int hos : hospitals) {
+            if (res.dist[hos] < shortestTime) {
+                shortestTime = res.dist[hos];
+                nearestHospital = hos;
+            }
+        }
+
+        if (nearestHospital == -1) {
+            System.out.println("❌ No reachable hospital from the ambulance’s location.");
+        } else {
+            System.out.printf("✅ Nearest hospital: %d (Travel time = %.2f minutes)\n", nearestHospital, shortestTime);
+            List<Integer> path = reconstructPath(res, nearestHospital);
+            System.out.println("🛣️ Shortest Path: " + path);
+            exportGraphvizDot(g, path, "shortest_path.dot");
+            System.out.println("📄 DOT file saved as 'shortest_path.dot' — visualize with Graphviz.");
+        }
+
+        System.out.println("⏱️ Dijkstra Execution Time: " + (end - start) + " ms");
+
+        // -------------------- DYNAMIC TRAFFIC UPDATES --------------------
+        while (true) {
+            System.out.println("\nMenu:");
+            System.out.println("1️⃣ Update road weight (simulate traffic change)");
+            System.out.println("2️⃣ Re-run Dijkstra");
+            System.out.println("3️⃣ Exit");
+            System.out.print("Choose: ");
+            int choice = sc.nextInt();
+
+            if (choice == 1) {
+                System.out.print("Enter road to update <u> <v> <new_time>: ");
+                int u = sc.nextInt();
+                int v = sc.nextInt();
+                double newW = sc.nextDouble();
+                if (g.updateEdgeWeight(u, v, newW) || g.updateEdgeWeight(v, u, newW)) {
+                    System.out.println("✅ Road weight updated successfully!");
+                } else {
+                    System.out.println("⚠️ Road not found in the network!");
+                }
+            } else if (choice == 2) {
+                System.out.println("\nRecomputing Dijkstra with updated weights...");
+                long t1 = System.currentTimeMillis();
+                res = dijkstra(g, source);
+                long t2 = System.currentTimeMillis();
+                System.out.println("✅ Recomputed in " + (t2 - t1) + " ms");
+            } else {
+                System.out.println("👋 Exiting Smart Traffic Management System.");
+                break;
+            }
+        }
+
+        sc.close();
+    }
+}
+
+
+
+
+
+THEORY:
+
+
+
+Algorithm Explanation — Dijkstra’s Shortest Path Algorithm
+📘 Concept
+
+Dijkstra’s Algorithm is used to find the shortest (minimum weight) path from a single source to all other nodes in a weighted graph (non-negative weights only).
+
+Here, each node represents an intersection and each edge represents a road with travel time (weight).
+
+🚑 Real-World Analogy
+
+An ambulance starts from a source node and needs to find the fastest route to reach the nearest hospital, considering travel time and possible traffic changes.
+
+🧠 Algorithm Steps
+
+Initialize
+
+Set distance of all nodes = ∞ (infinity)
+
+Distance[source] = 0
+
+Use a Priority Queue
+
+Always pick the node with the smallest distance (minimum travel time so far)
+
+Relaxation Step
+
+For each neighbor v of u:
+
+if dist[u] + weight(u,v) < dist[v]:
+    dist[v] = dist[u] + weight(u,v)
+    parent[v] = u
+
+
+Repeat until all nodes are processed or queue is empty
+
+Reconstruct Path
+
+Use parent[] array to backtrack from destination to source.
+
+⏱️ Time & Space Complexity
+Case	Complexity	Reason
+Time	O((V + E) log V)	Each edge is relaxed using a priority queue
+Space	O(V)	For distance, parent, and visited arrays
+Type	Greedy Algorithm	Always picks the nearest unvisited node
+Best For	Non-negative weighted graphs	
+✅ Features in This Program
+
+Supports dynamic updates (changing edge weights when traffic changes)
+
+Exports output to a DOT file for visualization using Graphviz
+
+Handles large graphs (many intersections and roads)
+
+🧠 Code Explanation (Line by Line)
+1️⃣ Graph Structure
+static class Edge {
+    int to;
+    double weight;
+}
+
+
+Each edge connects two intersections.
+
+to: destination node.
+
+weight: time in minutes to travel this road.
+
+static class Graph {
+    int n;
+    List<List<Edge>> adj;
+
+
+Represents the whole city road network using an adjacency list.
+
+Graph(int n) {
+    this.n = n;
+    adj = new ArrayList<>();
+    for (int i = 0; i < n; i++) adj.add(new ArrayList<>());
+}
+
+
+Creates n empty lists, one per intersection.
+
+void addEdge(int u, int v, double w) {
+    adj.get(u).add(new Edge(v, w));
+}
+
+
+Adds a directed edge from intersection u → v with travel time w.
+
+boolean updateEdgeWeight(int u, int v, double newWeight) {
+    for (Edge e : adj.get(u)) {
+        if (e.to == v) {
+            e.weight = newWeight;
+            return true;
+        }
+    }
+    return false;
+}
+
+
+Used when traffic changes; updates the road’s travel time dynamically.
+
+2️⃣ Node and Result Structures
+static class Node {
+    int id;
+    double distance;
+}
+
+
+Used in priority queue, holding the intersection ID and its distance so far.
+
+static class DijkstraResult {
+    double[] dist;
+    int[] parent;
+}
+
+
+Stores shortest distance from source and the parent node for path reconstruction.
+
+3️⃣ Dijkstra’s Algorithm
+public static DijkstraResult dijkstra(Graph g, int source)
+
+
+Main algorithm to compute shortest paths.
+
+Initialization
+res.dist[source] = 0.0;
+PriorityQueue<Node> pq = new PriorityQueue<>(Comparator.comparingDouble(n1 -> n1.distance));
+pq.offer(new Node(source, 0.0));
+
+
+Distance from source = 0.
+
+A min-heap (priority queue) picks the smallest distance node each time.
+
+Main Loop
+while (!pq.isEmpty()) {
+    Node current = pq.poll();
+    int u = current.id;
+
+
+Takes the nearest node from the queue.
+
+for (Edge e : g.adj.get(u)) {
+    int v = e.to;
+    double newDist = res.dist[u] + e.weight;
+
+
+For each neighboring road, calculate new possible distance.
+
+if (newDist < res.dist[v]) {
+    res.dist[v] = newDist;
+    res.parent[v] = u;
+    pq.offer(new Node(v, newDist));
+}
+
+
+If this new distance is shorter, update it and push the neighbor into the queue.
+
+4️⃣ Path Reconstruction
+public static List<Integer> reconstructPath(DijkstraResult res, int target) {
+    List<Integer> path = new ArrayList<>();
+    int cur = target;
+    while (cur != -1) {
+        path.add(cur);
+        cur = res.parent[cur];
+    }
+    Collections.reverse(path);
+    return path;
+}
+
+
+Uses parent[] to trace back from the hospital to the ambulance source and reverses it.
+
+5️⃣ Graph Visualization (Graphviz)
+exportGraphvizDot(g, path, "shortest_path.dot");
+
+
+Generates a .dot file that can be opened in Graphviz to see:
+
+Yellow nodes = part of shortest path
+
+Red edges = shortest route
+
+6️⃣ Main Function
+System.out.print("Enter number of intersections: ");
+int n = sc.nextInt();
+System.out.print("Enter number of roads: ");
+int m = sc.nextInt();
+
+
+Takes user input for nodes and edges.
+
+g.addEdge(u, v, w);
+g.addEdge(v, u, w);
+
+
+Adds bidirectional roads.
+
+System.out.print("Enter ambulance source node: ");
+int source = sc.nextInt();
+
+
+Ambulance starting point.
+
+System.out.print("Enter number of hospital nodes: ");
+
+
+Collects hospital locations.
+
+Running the Algorithm
+DijkstraResult res = dijkstra(g, source);
+
+
+Finds shortest time from source to all nodes.
+
+int nearestHospital = -1;
+double shortestTime = Double.POSITIVE_INFINITY;
+
+
+Determines nearest hospital among given ones.
+
+System.out.printf("✅ Nearest hospital: %d (Travel time = %.2f minutes)\n", nearestHospital, shortestTime);
+System.out.println("🛣️ Shortest Path: " + path);
+
+
+Displays the nearest hospital and the path.
+
+7️⃣ Dynamic Traffic Update Menu
+while (true) {
+    System.out.println("1️⃣ Update road weight");
+    System.out.println("2️⃣ Re-run Dijkstra");
+    System.out.println("3️⃣ Exit");
+
+
+Lets user update road weights (simulate traffic), rerun Dijkstra, or exit.
+
+🧩 Time & Space Analysis
+Metric	Value	Explanation
+Best Case	O((V + E) log V)	Priority Queue operations
+Worst Case	O(V²)	If no priority queue used
+Space Complexity	O(V + E)	Graph storage + result arrays
+Algorithm Type	Greedy	Always expands nearest unvisited node
+🎤 Viva Questions & Answers
+
+Q1: What type of algorithm is Dijkstra’s?
+👉 It’s a Greedy Algorithm that always chooses the shortest current distance node.
+
+Q2: Why can’t Dijkstra’s handle negative weights?
+👉 Because once a node is marked as visited, it assumes the shortest path is found — negative weights can invalidate that.
+
+Q3: How does Dijkstra differ from BFS?
+👉 BFS works for unweighted graphs; Dijkstra works for weighted graphs with non-negative edges.
+
+Q4: How does the algorithm ensure correctness?
+👉 It always expands nodes in order of increasing distance (guaranteed shortest path found first).
+
+Q5: What is the real-world use of Dijkstra’s Algorithm?
+👉 Used in Google Maps, GPS navigation, network routing, and traffic management systems like this one.
+
+Q6: What’s the purpose of exporting to a DOT file?
+👉 To visualize the graph and shortest path using Graphviz tool (useful for presentations or reports).
